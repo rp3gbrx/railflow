@@ -82,7 +82,7 @@ Documents supplied with the project have no public link and are shown in italics
     <span class="url">https://content.tfl.gov.uk/travel-in-london-2024-trends-in-public-transport-demand-and-operational-performance-acc.pdf</span>  
     <span class="use">Used for: Day-of-week recovery pattern (Saturday and Sunday above weekdays).</span>
 
-### Projects using the model (supplied as otherProjects)
+### Examples of the model's use in other projects (supplied as otherProjects)
 
 24. *Split Ticket Calculator (Confluence page)*. AIIA project team. Confluence export, 2026.  
     <span class="use">Used for: STC pipeline, Pewsey as a top split point, Weymouth–Melksham and Aldermaston–Betchworth examples.</span>
