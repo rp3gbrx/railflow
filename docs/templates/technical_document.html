@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>railflow Technical Document</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+[[style]]
+</style>
+</head>
+<body>
+<main>
+<p class="eyebrow">railflow · GB rail trip distribution and network flow model</p>
+<h1>railflow technical document</h1>
+<p class="meta">Prepared by Dr Rawle Prince · [[date]] · Model version [[version]] · Base year ORR [[base_year]] (April 2024 – March 2025) · Companion pages: <a href="applications.html">applications.html</a>, <a href="sources.html">sources.html</a></p>
+<p class="lede">railflow estimates how many rail passengers travel between every pair of stations in Great Britain on an average weekday, and how those journeys load onto the rail network. It started inside the SWR Service Recovery proof of concept and is now a separate model, developed on its own release cycle and used by several projects. This document records how the model was built, how well it fits, how other projects use it, and how it should be improved.</p>
+
+<div class="key">
+<h3>At a glance</h3>
+<ul>
+<li><b>Coverage:</b> [[n_stations]] stations, [[annual_m]] million journeys a year, <b>[[awd_m]] million on an average weekday</b>, on a [[track_km]] km rail network built from OpenStreetMap.</li>
+<li><b>Two matrices.</b> <i>Model A</i> is a doubly constrained gravity model with 22 region-level deterrence functions, as in the ETC 2018 RailWatch paper. <i>Model B</i> fuses Model A with every station-pair and local-authority-pair count that ORR publishes. Model B is the default for network loading.</li>
+<li><b>Fit:</b> regional trip-length distributions and internal shares are reproduced (mean error [[int_share_mae]]). Passenger-km is [[pkm_B]] against ORR's 64.6 bn. Model B matches the 19,288 local-authority pair totals (R² [[r2B]]) and the 2,540 published station main flows exactly.</li>
+<li><span class="flag">Main weakness:</span> distance alone cannot reproduce the concentration of demand on fast direct services. Unpublished dominant flows are under-predicted: in a hold-out test, only [[ho_B]] fall within ±25%. Observed station-to-station data (R1) and timetable-based costs (R3) are the two highest-priority improvements.</li>
+<li><b>Use from other projects:</b> <code>from railflow.api import RailFlow</code> gives matrices, routes, flows through a station, screenline flows and re-assignment of any matrix. See <a href="#outputs">Outputs and interface</a>.</li>
+</ul>
+</div>
+
+<nav class="toc" aria-label="Contents"><ol>
+<li><a href="#purpose">Purpose and scope</a></li><li><a href="#glance">Model at a glance</a></li><li><a href="#history">Development history</a></li>
+<li><a href="#data">Data</a></li><li><a href="#trip-ends">Trip ends</a></li><li><a href="#network">Network and costs</a></li>
+<li><a href="#zones">Stations, local authorities, regions</a></li><li><a href="#model-a">Model A: distribution</a></li><li><a href="#model-b">Model B: data fusion</a></li>
+<li><a href="#assignment">Assignment</a></li><li><a href="#validation">Validation</a></li><li><a href="#outputs">Outputs and interface</a></li>
+<li><a href="#run">Running and configuring</a></li><li><a href="#limits">Limitations</a></li><li><a href="#roadmap">Improvement roadmap</a></li>
+<li><a href="#changelog">Change log</a></li><li><a href="#sources">Sources</a></li>
+</ol></nav>
+
+<h2 id="purpose">Purpose and scope</h2>
+<p>Several GBRX and AIIA projects need the same thing: a defensible estimate of how many passengers use each station pair and each part of the network. Incident analysis needs it as an exposure measure, fares work needs it to weigh opportunities by demand, and performance work needs it to weight trains and routes by passengers. Building that separately in each project would give inconsistent numbers, so railflow is maintained as one model with a stable interface.</p>
+<p><b>In scope (version [[version]]):</b> an all-day, average-weekday and annual station-to-station matrix for Great Britain in the ORR base year; shortest-path loading onto a GB rail network; station throughput and screenline flows; validation against ORR statistics; a Python interface for downstream projects.</p>
+<p><b>Not yet in scope:</b> time-of-day matrices, train-level loads, crowding, freight, forecasting and scenarios. All of these are on the <a href="#roadmap">roadmap</a>. The model describes the base year; it does not yet predict how demand responds to timetable or fare changes.</p>
+
+<h2 id="glance">Model at a glance</h2>
+<div class="tbl"><table>
+<thead><tr><th>Stage</th><th>Module</th><th>Main inputs</th><th>Main outputs</th><th>Key choices</th></tr></thead>
+<tbody>
+<tr><td>1. Trip ends</td><td><code>tripends.py</code></td><td>ORR Table 1410; station coordinates</td><td><code>stations.csv</code>: annual and weekday origins and destinations</td><td>O = D = half of entries + exits; weekday factors by ticket type</td></tr>
+<tr><td>2. Network</td><td><code>network.py</code></td><td>OSM railway lines</td><td>Graph, station nodes, station-to-station cost skim</td><td>Four repair passes; unnamed ways ×1.25; central London transfer links</td></tr>
+<tr><td>3. Zones</td><td><code>zones.py</code></td><td>Table 1595; OSM admin attribute</td><td>Station → local authority → region</td><td>Checked against Table 1595 LA totals</td></tr>
+<tr><td>4. Distribution</td><td><code>distribution.py</code></td><td>Trip ends, skim, Table 1595 trip-length distributions, Table 1410 main flows</td><td><code>matrices.npz</code>: Model A and Model B, annual and weekday</td><td>22 log-normal deterrence functions, jointly calibrated; Model B fusion</td></tr>
+<tr><td>5. Validation</td><td><code>validation.py</code></td><td>Matrices; ORR tables</td><td><code>validation_summary.json</code> and tables</td><td>LA-pair fit, hold-out of main flows, paper comparison</td></tr>
+<tr><td>6. Assignment</td><td><code>assignment.py</code></td><td>Matrices; graph</td><td>Edge flows, GeoPackage, station throughput</td><td>All-or-nothing shortest path</td></tr>
+<tr><td>7. Exports, figures</td><td><code>exports.py</code>, <code>figures.py</code></td><td>All of the above</td><td>OD CSVs, figures</td><td>–</td></tr>
+</tbody></table></div>
+<p>A full run takes about [[runtime_min]] minutes when the stored deterrence parameters are reused, plus about [[cal_min]] minutes when they are re-calibrated.</p>
+
+<h2 id="history">Development history</h2>
+<p>railflow is the third implementation of the same modelling idea.</p>
+<ol>
+<li><b>2017–2022, synthetic matrix calibration (R).</b> <code>Calibrate_Synthetic_ParmsNew.R</code> (version 1.4) fitted log-normal deterrence functions for several segments to observed trip-length distributions, alternating with a Furness run in EMME. The technical note <i>Estimating Parameters of Deterrence Functions in Synthetic Matrix Development</i> describes the method: calibration as non-linear least squares solved by Levenberg–Marquardt, with band merging above 160 bands and stratified sampling above 220,000 matrix cells to keep run times manageable.</li>
+<li><b>2018, RailWatch Train Occupancy Model.</b> The ETC 2018 paper describes a three-stage Train Occupancy Model for the West Coast Main Line. Station trip ends came from NTS trip rates, Census population and NTEM, split to stations with ticket sales. A gravity model with 14 deterrence functions (seven regional groups, internal-to-internal and internal-to-external) was built from mobile network data trip-length distributions for four time periods, with NTEM origin and destination weights. Demand was assigned to individual trains from the CIF timetable, with a cost combining fare, time, crowding and wait.</li>
+<li><b>October 2026, SWR Service Recovery POC.</b> The approach was rebuilt in Python with public data to give the incident analysis a passenger exposure measure.</li>
+<li><b>October 2026, railflow [[version]].</b> The model was separated from the SWR project into its own repository with a command-line interface, a read-only Python interface and this document. Outputs are identical to the POC run.</li>
+</ol>
+<h3>What changed from the RailWatch model, and why</h3>
+<div class="tbl"><table>
+<thead><tr><th>Component</th><th>RailWatch TOM (2018)</th><th>railflow [[version]]</th><th>Reason</th></tr></thead>
+<tbody>
+<tr><td>Trip ends</td><td>NTS trip rates × population × NTEM growth, split to stations by ticket sales</td><td>ORR Table 1410 entries and exits, converted to an average weekday</td><td>Observed station usage is published for every station each year; a synthetic trip-end model is only needed for forecasting (R9)</td></tr>
+<tr><td>Trip-length targets</td><td>Mobile network data, by time period</td><td>ORR Table 1595 journeys between 200 local authorities, all day</td><td>MND not available to the project; Table 1595 is the published LENNON-based matrix and totals exactly to Table 1410</td></tr>
+<tr><td>Regions</td><td>7 groups × 2 directions = 14 functions</td><td>11 ITL1 regions × 2 = 22 functions</td><td>Table 1595 supports the full regional split; the 7-group results are reported for comparison</td></tr>
+<tr><td>Deterrence form</td><td>Piecewise-linear, 1 km bands, not calibrated</td><td>Log-normal with an external level term, calibrated</td><td>LA-level targets are too coarse for 1 km bands; a smooth form generalises better to station pairs. Piecewise forms remain an option (R8)</td></tr>
+<tr><td>Origin and destination weights</td><td>NTEM time-period factors</td><td>Not used</td><td>All-day model; needed for time periods (R8)</td></tr>
+<tr><td>Calibration</td><td>Levenberg–Marquardt per segment, alternating with Furness</td><td>All 55 parameters fitted jointly, Furness re-run inside every evaluation</td><td>Vectorised Furness on the full 2,586 × 2,586 matrix takes well under a second, so no sampling or band merging is needed and segment interactions are handled exactly</td></tr>
+<tr><td>Observed OD cells</td><td>None</td><td>Model B: 2,540 observed station flows fixed, LA-pair totals imposed</td><td>Gravity models under-predict dominant radial flows; fusion uses every observation available</td></tr>
+<tr><td>Assignment</td><td>Schedule-based, to trains, with crowding</td><td>All-or-nothing on track shortest paths</td><td>Timetable not yet integrated (R3, R4)</td></tr>
+</tbody></table></div>
+
+<h2 id="data">Data</h2>
+<div class="tbl"><table>
+<thead><tr><th>Input (file in <code>data/</code>)</th><th>Provider and licence</th><th>Used for</th><th>Refresh</th></tr></thead>
+<tbody>
+<tr><td>Table 1410, entries, exits and interchanges by station, 2024-25 (<code>table-1410-…ods</code>)</td><td>ORR, Open Government Licence</td><td>Trip ends by ticket type; main origin/destination flow per station; region; facility owner</td><td>Annually, each December</td></tr>
+<tr><td>Table 1595, journeys between local authorities, 2024-25 (<code>table-1595-…csv</code>)</td><td>ORR, Open Government Licence</td><td>Calibration targets; LA-pair totals for Model B; validation</td><td>Annually, with regional rail usage</td></tr>
+<tr><td>OSM railways (<code>osm/railways_lines.shp</code>)</td><td>HOT export of OpenStreetMap, ODbL</td><td>Network, distances, assignment; admin area for station-to-LA mapping</td><td>On demand</td></tr>
+<tr><td>Station coordinates (<code>ext/stations.json</code>, <code>ext/uk-train-stations.csv</code>)</td><td>davwheat and ellcom open lists</td><td>Station locations by CRS code (second list as cross-check)</td><td>When stations open</td></tr>
+</tbody></table></div>
+<p>Table 1595 totals [[annual_m]] million journeys, the same as Table 1410, because both come from ORR's Origin-Destination Matrix (ODM), which is built from LENNON ticket sales with infill for Travelcards and local PTE tickets. The full station-to-station ODM is not published on the ORR portal but is available through the Rail Data Marketplace; it is roadmap item R1. <code>data/README.md</code> gives download links and checksums.</p>
+
+<h2 id="trip-ends">Trip ends</h2>
+<p>Each journey appears once as an entry and once as an exit, so in an all-day matrix each station's origins and destinations are both half of its entries plus exits. Interchanges are not trip ends and are excluded. Annual figures are converted to an average weekday by ticket type:</p>
+<ul>
+<li><b>Season tickets:</b> journeys made on working weekdays, annual ÷ [[season_div]].</li>
+<li><b>Full and reduced-price tickets:</b> spread over the year with a day-of-week index (weekday 1.0, Saturday 0.9, Sunday and bank holiday 0.6), annual ÷ [[ord_div]]. Weekend travel has recovered faster than weekday travel since the pandemic, which is why Saturday sits close to a weekday.</li>
+</ul>
+<p>The resulting national factor is [[annualisation]]: one average weekday carries 1/[[annualisation]] of annual journeys. Stations with more season-ticket use get a higher weekday share. These factors are the least certain input in the model. LENNON day-of-week data would replace them directly (R2), and they are set in <code>railflow/config.py</code>.</p>
+
+<h2 id="network">Network and costs</h2>
+<p>The graph is built from shared OSM vertices, so lines meet only where OSM joins them, and bridges and tunnels stay separate. The HOT export is incomplete: some switch ways are missing, and whole sections are absent, including parts of the West Coast Main Line at Rugby, Settle–Carlisle and Bath–Bradford-on-Avon. Four repair passes make the network routable:</p>
+<div class="tbl"><table>
+<thead><tr><th>Pass</th><th>Rule</th><th class="n">Links</th><th class="n">Length (km)</th><th>Cost</th></tr></thead>
+<tbody>
+<tr><td>(a) Dead-end snaps</td><td>Dead end joins the nearest vertex of another way within 30 m</td><td class="n">[[n_snap]]</td><td class="n">[[km_snap]]</td><td>Length</td></tr>
+<tr><td>(b) Component bridges</td><td>Remaining fragments join the main network (Borůvka-style, up to 40 km)</td><td class="n">[[n_bridge]]</td><td class="n">[[km_bridge]]</td><td>Length ×1.3</td></tr>
+<tr><td>(c) Named-line gaps</td><td>Dead ends of the same named line are joined where the network detour exceeds 2.5 × gap + 2 km, using dead ends from before pass (a)</td><td class="n">[[n_gap]]</td><td class="n">[[km_gap]]</td><td>Length ×1.1</td></tr>
+<tr><td>(d) Central London transfers</td><td>Links among 26 central stations within 8 km, standing in for Underground and walk interchange</td><td class="n">[[n_tube]]</td><td class="n">[[km_tube]]</td><td>1.3 × length + 3 km</td></tr>
+</tbody></table></div>
+<p>The repaired graph has [[n_osm]] OSM track sections ([[track_km]] km) and is a single connected component. Costs are shortest-path track kilometres, with unnamed ways (mostly sidings, yards and depots) multiplied by [[unnamed_pen]] so routes stay on running lines. Each station snaps to the nearest named running line within 400 m, otherwise to the nearest vertex, and the snap distance is added as an access leg; [[snap_far]] stations sit more than 1 km from any line. Station-to-station costs come from Dijkstra's algorithm over all station nodes.</p>
+<p>On SWR routes the network distances are within 1–3% of timetable mileages: Waterloo–Southampton Central [[d_wat_sou]] km (127.8 km actual) and Waterloo–Exeter St Davids [[d_wat_exd]] km (277 km). The Weymouth–Melksham route used in the Split Ticket Calculator example is [[d_wey_mkm]] km, against 109.9 km from the STC's segment mileages.</p>
+
+<h2 id="zones">Stations, local authorities and regions</h2>
+<p>Table 1595 is given between local authorities (LAs), so each station needs an LA. The OSM admin attribute provides it for most stations. Manual overrides cover cases where the attribute is wrong for ORR's purposes: for example Waterloo is in Lambeth, Tottenham Court Road in Camden, Luton Airport Parkway in Luton and Woolwich in Greenwich. A consistency step then makes each station's LA agree with its ORR region, and a greedy search reassigns stations under 3 million entries and exits where that brings LA totals closer to Table 1595. After this, [[la_misalloc]] of entries and exits sit in a different LA from ORR's attribution, mostly in inner east London. Regions are the 11 ITL1 regions used by ORR.</p>
+
+<h2 id="model-a">Model A: gravity distribution</h2>
+<p>The formulation follows Section 2.2 of the RailWatch paper and the technical note:</p>
+<div class="eq">T_ij = A_i · B_j · O_i · D_j · f_k(c_ij)
+Σ_j T_ij = O_i,   Σ_i T_ij = D_j            (A, B from a symmetric Furness)
+
+internal pairs (same region r):    f(c) = dlnorm(c; μ_r,int, σ_r,int)
+external pairs (regions r ≠ s):    f(c) = sqrt( g_r(c) · g_s(c) ),   g_r(c) = e^γ_r · dlnorm(c; μ_r,ext, σ_r,ext)
+c = max(network km, [[min_km]] km)</div>
+<p>There is one deterrence function per region and direction: 11 regions × {internal-to-internal, internal-to-external} = <b>22 functions</b>, the log-normal density used in the R script. The level term e<sup>γ</sup> sets each region's internal/external split. Using the geometric mean of the two regions' external functions keeps the all-day matrix symmetric, as it should be when origins equal destinations.</p>
+<h3>Calibration</h3>
+<p>The targets are 22 observed trip-length distributions (27 distance bands from 0 to 1,500 km, 2.5 km wide at the short end) plus 11 regional internal shares, [[n_resid]] residuals in total, all built from Table 1595. Observed journeys sit between LA pairs, so the model's station-to-station matrix is aggregated to LA pairs and both are binned on the same journey-weighted network distance between LAs. This makes the comparison like for like. The 55 parameters are fitted jointly by bounded trust-region least squares (SciPy <code>least_squares</code>, method <code>trf</code>), with the Furness re-run at every evaluation. The objective fell from [[cost0]] to [[cost1]] in [[nev]] evaluations ([[cal_min]] minutes). The parameters are stored in <code>outputs/model/theta.npy</code> and reused unless <code>--recalibrate</code> is given; a re-calibration from the same inputs reproduces them exactly.</p>
+<figure><img src="figures/tld_fit_internal.png" alt="Observed vs Model A internal trip-length distributions for 11 regions"><figcaption>Internal-to-internal trip-length distributions by region: observed (bars) and Model A (line).</figcaption></figure>
+<figure><img src="figures/tld_fit_external.png" alt="Observed vs Model A external trip-length distributions for 11 regions"><figcaption>Internal-to-external distributions. They are multi-modal, as in the paper's Figure 4; the peaks come from where other regions' large stations sit, while the deterrence function itself stays smooth.</figcaption></figure>
+[[param_table]]
+<figure><img src="figures/deterrence_functions.png" alt="Calibrated deterrence functions by region"><figcaption>Calibrated deterrence functions, scaled to their peak. Most internal functions peak between 5 and 30 km, because very short station-to-station trips are rare by rail. London's internal function is the flattest over 2–40 km.</figcaption></figure>
+
+<h2 id="model-b">Model B: fusing the gravity model with ORR observations</h2>
+<p>A distance-only gravity model spreads each station's trips across nearby stations. Real rail demand is more concentrated, because fast direct services make a London terminus effectively closer than the next town. Model A gives Surbiton–Waterloo [[sur_wat_A]] journeys a year, where ORR records [[sur_wat_obs]]. No distance function can fix this, so Model B uses the observations directly:</p>
+<ol>
+<li>The [[n_fixed]] unique station <i>main origin/destination</i> flows in Table 1410 are fixed cells. Each station's largest flow is published, and together these carry [[main_od_share]] of all journeys.</li>
+<li>All other cells start from Model A and are balanced to each station's remaining trip ends and to the remaining LA-to-LA totals of Table 1595, by tri-proportional fitting with symmetry imposed at each iteration. After [[fuse_it]] iterations the residual error is [[fuse_err]] on LA pairs and [[fuse_te]] on trip ends.</li>
+<li>The weekday matrix applies Model A's cell-by-cell weekday/annual ratio to Model B and is re-balanced to weekday trip ends.</li>
+</ol>
+<p>In Model B the gravity model's job is infilling: it distributes the roughly 60% of journeys that ORR does not publish at station level, within observed LA-pair totals. Model B is the recommended matrix for network loading, because it gets the large published flows right and those dominate link loads.</p>
+
+<h2 id="assignment">Assignment and derived measures</h2>
+<p>Both matrices are assigned all-or-nothing to the shortest network path. Each origin's shortest-path tree is built once, and every destination's demand is pushed back up the tree (a Numba-compiled loop), so the full GB assignment takes about a minute. Flows are two-way passengers on each OSM track section, per average weekday and per year. Where OSM maps parallel tracks separately, the route uses one of them, so a single line on the map carries the corridor total. Two derived measures avoid that artefact:</p>
+<ul>
+<li><b>Station throughput:</b> passengers per weekday who use a station or pass through it, counted on a 150 m ring around the station so that all parallel tracks are included (<code>station_throughput.csv</code>).</li>
+<li><b>Screenlines:</b> two-way flow crossing a line drawn across all tracks midway between two stations (<code>RailFlow.screenline</code>).</li>
+</ul>
+<figure><img src="figures/flows_gb.png" alt="Map of modelled rail passenger flows in Great Britain"><figcaption>Great Britain, Model B, average weekday. Line width is proportional to two-way passengers.</figcaption></figure>
+<figure><img src="figures/flows_london.png" alt="Map of modelled rail passenger flows in London"><figcaption>London, Model B, average weekday.</figcaption></figure>
+[[lines_table]]
+
+<h2 id="validation">Validation</h2>
+<div class="tbl"><table>
+<thead><tr><th>Test</th><th class="n">Model A</th><th class="n">Model B</th><th>Note</th></tr></thead>
+<tbody>
+<tr><td>Regional internal share, mean absolute error</td><td class="n">[[int_share_mae]]</td><td class="n">–</td><td>Calibration target</td></tr>
+<tr><td>LA-pair flows ([[la_pairs]] pairs), R² linear / log</td><td class="n">[[r2A]]</td><td class="n">[[r2B]]</td><td>B is fitted to these</td></tr>
+<tr><td>LA pairs over 100,000 journeys: median absolute error</td><td class="n">[[la100_err]]</td><td class="n">–</td><td>[[la100_n]] pairs</td></tr>
+<tr><td>Held-out main station flows ([[ho_n]] pairs): within ±25%</td><td class="n">[[ho_A]]</td><td class="n">[[ho_B]]</td><td>B rebuilt from the other 80%</td></tr>
+<tr><td>Held-out main station flows: median model ÷ observed</td><td class="n">[[ho_A_ratio]]</td><td class="n">[[ho_B_ratio]]</td><td>1.00 = unbiased</td></tr>
+<tr><td>Mean journey length (passenger-km ÷ journeys)</td><td class="n">[[mean_km_A]]</td><td class="n">[[mean_km_B]]</td><td>ORR: [[orr_mean_km]] (all operators)</td></tr>
+<tr><td>Passenger-km per year</td><td class="n">[[pkm_A]]</td><td class="n">[[pkm_B]]</td><td>ORR: 64.6 bn for 1,729m journeys</td></tr>
+</tbody></table></div>
+<figure><img src="figures/la_pair_validation.png" alt="Scatter of observed vs Model A local-authority pair journeys"><figcaption>Model A against observed LA-pair flows. Scatter is wide for small pairs and tighter for the large flows that dominate network loads.</figcaption></figure>
+<p><b>Interpreting the hold-out.</b> One in five published main flows was withheld, Model B rebuilt from the rest, and the withheld flows compared with the model. Both models under-predict them by a factor of two to three (median ratio [[ho_B_ratio]] for B). Balancing to LA totals alone, with no fixed cells, does a little better: [[ho_LA]] within ±25%, median ratio [[ho_LA_ratio]]. Fixing the other 80% of main flows uses up much of each London terminal's trip ends, which leaves less for the withheld pairs. The under-prediction is structural: distance does not capture service quality. Hub uplifts and gateway rules were tested during development and did not fix it. Timetable-based costs (R3) and observed station-to-station flows (R1) do.</p>
+<p><b>Passenger-km.</b> Modelled passenger-km match ORR's total closely, but ORR's figure covers 13% more journeys (1,729m, including journeys not in station usage, against 1,532m). Modelled journeys are therefore about [[longer_pct]] longer than ORR's average ([[mean_km_B]] against [[orr_mean_km]]), which fits shortest paths on a repaired network with access legs and cross-London transfer links. Treat absolute link loads as indicative (±15–25%). Relative loads between corridors are more robust.</p>
+[[paper_table]]
+
+<h2 id="outputs">Outputs and interface</h2>
+<h3>Files written by a run</h3>
+<div class="tbl"><table>
+<thead><tr><th>File (under <code>outputs/</code>)</th><th>Content</th></tr></thead>
+<tbody>
+<tr><td><code>model/stations.csv</code></td><td>One row per station in model order: CRS, NLC, name, region, facility owner, coordinates (lat/lon and BNG), entries and exits by ticket type, weekday entries and exits (<code>ee_awd</code>), season share, origins and destinations (<code>O_awd</code>, <code>D_awd</code>), main flow</td></tr>
+<tr><td><code>model/matrices.npz</code></td><td><code>TA_ann</code>, <code>TA_awd</code>, <code>TB_ann</code>, <code>TB_awd</code>: station × station trips (float32), rows are origins in <code>stations.csv</code> order</td></tr>
+<tr><td><code>model/skim_cost_km.npy</code></td><td>Station × station network cost (km), including access legs and penalties</td></tr>
+<tr><td><code>model/net_edges.parquet</code>, <code>model/net_nodes.npy</code></td><td>Network graph (edges with kind <code>osm</code>, <code>snap</code>, <code>bridge</code>, <code>gap</code>, <code>tube</code>; cost and geometry in BNG)</td></tr>
+<tr><td><code>model/edge_flows.parquet</code></td><td>Edges with <code>flow_TA_awd</code>, <code>flow_TB_awd</code>, <code>flow_TA_ann</code>, <code>flow_TB_ann</code></td></tr>
+<tr><td><code>model/station_nodes.csv</code>, <code>model/station_la.csv</code>, <code>model/station_throughput.csv</code></td><td>Station node and snap distance; LA and region; use + through flows</td></tr>
+<tr><td><code>model/theta.npy</code>, <code>model/calibration.json</code>, <code>model/metadata.json</code></td><td>Calibrated parameters; calibration and fusion statistics; version, run time and assumptions</td></tr>
+<tr><td><code>od_matrix_awd_modelA.csv.gz</code>, <code>od_matrix_awd_modelB.csv.gz</code></td><td>Long-format weekday OD (pairs ≥ 0.05 trips a day, over 99% of trips)</td></tr>
+<tr><td><code>gis/rail_flows.gpkg</code></td><td>Flows for GIS (WGS84)</td></tr>
+<tr><td><code>tables/*.csv</code>, <code>figures/*.png</code></td><td>Parameters, validation tables and the figures in this document</td></tr>
+</tbody></table></div>
+<h3>Python interface</h3>
+<p>Downstream projects read a run through <code>railflow.api.RailFlow</code>, which is read-only and does not depend on how the model was built. Station order is the same everywhere.</p>
+<div class="tbl"><table>
+<thead><tr><th>Call</th><th>Returns</th></tr></thead>
+<tbody>
+<tr><td><code>rf = RailFlow("outputs")</code></td><td>Handle on a model run</td></tr>
+<tr><td><code>rf.stations</code>, <code>rf.crs</code>, <code>rf.idx("WAT")</code></td><td>Station table (with LA, throughput, node); CRS codes; matrix index of a CRS or list of CRS</td></tr>
+<tr><td><code>rf.matrix("B", "awd")</code></td><td>S × S trips; model <code>"A"</code> or <code>"B"</code>, period <code>"awd"</code> or <code>"ann"</code></td></tr>
+<tr><td><code>rf.od("B", "awd", min_trips=0.05)</code></td><td>Long table of station pairs with trips and network km</td></tr>
+<tr><td><code>rf.skim</code></td><td>S × S network cost (km)</td></tr>
+<tr><td><code>rf.route_stations("WEY", "MKM")</code>, <code>rf.route_edges(o, d)</code></td><td>Stations on the modelled route, in order; edge ids of the route</td></tr>
+<tr><td><code>rf.passing_through("PEW")</code></td><td>OD pairs whose modelled route passes a station, with trips</td></tr>
+<tr><td><code>rf.screenline("VXH", "WAT")</code></td><td>Two-way flow across all tracks between two stations</td></tr>
+<tr><td><code>rf.edges</code>, <code>rf.assign(T1, T2, …)</code></td><td>Edge flows (GeoDataFrame); edge flows for any S × S matrices, for example one segment of demand</td></tr>
+</tbody></table></div>
+<p>Projects should record the model version they used (<code>rf.metadata["version"]</code>) next to their results, so a later model release does not silently change them.</p>
+
+<h2 id="run">Running and configuring</h2>
+<div class="eq">pip install -e .                                   # Python 3.11+
+python -m railflow run --data data --out outputs    # full run (stored parameters reused)
+python -m railflow run --recalibrate                # re-fit the deterrence functions
+python -m railflow run --steps assignment,figures   # selected steps only
+python -m railflow info --out outputs               # summary of a run</div>
+<p>All assumptions that are not read from data (weekday factors, cost penalties, minimum distance, regions, map extents) are in <code>railflow/config.py</code>. Network repair settings are constants at the top of <code>railflow/network.py</code>. A run records its version, Python version, step times and key assumptions in <code>outputs/model/metadata.json</code>. Step times for this run: [[runtimes]].</p>
+<h3>Versioning and releases</h3>
+<ul>
+<li>Version numbers follow <i>major.minor.patch</i>. A change to outputs for the same inputs (a method change) is a minor release; a new base year of ORR data is a minor release; a change to the interface that breaks downstream code is a major release.</li>
+<li>Each release regenerates this document from its own outputs with <code>python docs/build_docs.py</code>, so numbers in the text always match the run.</li>
+<li>ORR publishes station usage each December and regional rail usage around the same time. An annual refresh replaces Tables 1410 and 1595, re-runs with <code>--recalibrate</code> and compares outputs with the previous year.</li>
+</ul>
+
+<h2 id="limits">Limitations</h2>
+<ul>
+<li><b>Distance-only costs.</b> The deterrence functions use network km. Service frequency, journey time, interchange and fares are missing, which is the cause of the under-predicted dominant flows (R1, R3).</li>
+<li><b>All-day, symmetric matrices.</b> Directional peak flows and time-of-day profiles need time-period modelling (R2, R8).</li>
+<li><b>Assumed weekday factors.</b> The conversion from annual to weekday uses assumed day-of-week indices (R2).</li>
+<li><b>Shortest-path routing.</b> Passengers are routed on the shortest track path, not on the trains they would take. Loops that the shortest path bypasses get no through flow: Frome, for example, sits on a loop off the Westbury–Castle Cary line that many trains use (R3, R4).</li>
+<li><b>Network gaps.</b> [[km_gap]] km of named-line gap links and [[km_bridge]] km of bridges stand in for track missing from the OSM export (R6).</li>
+<li><b>Station groups and London.</b> Tickets to station groups and cross-London journeys are represented only through ORR's allocation and coarse transfer links (R7).</li>
+<li><b>Passengers only.</b> Freight is not modelled (R5).</li>
+</ul>
+
+<h2 id="roadmap">Improvement roadmap</h2>
+<p>The items below are ordered by value to the projects that use the model and by how directly they address the known weaknesses. Each is designed to be delivered as a separate minor release, with validation before and after.</p>
+<div class="tbl"><table>
+<thead><tr><th>ID</th><th>Improvement</th><th>Fixes</th><th>Data</th><th>Effort</th><th>Priority</th></tr></thead>
+<tbody>
+<tr><td>R1</td><td>Observed station-to-station OD (ORR ODM)</td><td>Under-predicted dominant flows; infill quality</td><td>ODM via Rail Data Marketplace</td><td>Small–medium</td><td><span class="pill">1</span></td></tr>
+<tr><td>R2</td><td>LENNON variations: ticket type, day of week, period</td><td>Assumed weekday factors; segmentation</td><td>LENNON extracts (industry access)</td><td>Medium</td><td><span class="pill">1</span></td></tr>
+<tr><td>R3</td><td>Timetable-based generalised cost</td><td>Distance-only costs; routing via loops</td><td>Network Rail SCHEDULE feed (CIF/JSON); fares</td><td>Medium–large</td><td><span class="pill">1</span></td></tr>
+<tr><td>R4</td><td>Schedule-based assignment to trains, with time periods and crowding</td><td>No train loads; no time of day</td><td>SCHEDULE feed; train formations; departure profiles</td><td>Large</td><td><span class="pill">2</span></td></tr>
+<tr><td>R5</td><td>Freight services</td><td>No freight exposure</td><td>SCHEDULE FREIGHT file; TRUST movements; ORR freight tables</td><td>Medium</td><td><span class="pill">2</span></td></tr>
+<tr><td>R6</td><td>Network Rail network model</td><td>OSM gaps; no ELR or route boundaries</td><td>network-rail-gis (OGL); TIPLOC locations</td><td>Medium</td><td><span class="pill">2</span></td></tr>
+<tr><td>R7</td><td>Station groups and cross-London travel</td><td>London Terminals and other groups; crude transfers</td><td>ODM group allocation; Underground links</td><td>Small–medium</td><td><span class="pill">3</span></td></tr>
+<tr><td>R8</td><td>Distribution refinements</td><td>Functional form; time periods; segmentation</td><td>NTEM 8 OD factors; R1, R2</td><td>Medium</td><td><span class="pill">3</span></td></tr>
+<tr><td>R9</td><td>Trip-end model for scenarios</td><td>No forecasting</td><td>NTEM 8; population and employment; elasticities</td><td>Medium–large</td><td><span class="pill">3</span></td></tr>
+<tr><td>R10</td><td>Validation and uncertainty</td><td>Link loads unchecked against counts; no error bands</td><td>Passenger counts; ODM hold-outs</td><td>Medium, ongoing</td><td><span class="pill">2</span></td></tr>
+<tr><td>R11</td><td>Engineering: tests, CI, data versioning</td><td>Reproducibility as more people contribute</td><td>–</td><td>Small, ongoing</td><td><span class="pill">1</span></td></tr>
+</tbody></table></div>
+
+<h3>R1. Observed station-to-station OD from the ORR Origin-Destination Matrix</h3>
+<p>ORR builds an Origin-Destination Matrix (ODM) of estimated journeys between every pair of mainline stations each year, and station usage is derived from it. Annual ODM datasets from 2018-19 onwards are available on the Rail Data Marketplace, and regional bodies already use extracts (for example Transport for the South East's 2022-23 ODM). With the ODM:</p>
+<ul>
+<li>Model B's fixed cells grow from 2,540 main flows to every observed pair. The gravity model is then needed only for pairs below ORR's reporting threshold and for future scenarios.</li>
+<li>The deterrence functions can be calibrated at station-pair level instead of LA level, with finer distance bands, which allows piecewise forms as in the paper (R8).</li>
+<li>The hold-out test becomes a proper cross-validation: withhold a random 20% of station pairs and score the infill.</li>
+</ul>
+<p><b>Implementation:</b> add <code>railflow/odm.py</code> to read the ODM into the station index (mapping NLC to CRS, including station groups), extend <code>fuse()</code> to take any set of fixed cells, and keep LA totals as a constraint for pairs below the threshold. <b>Check:</b> ODM licence terms for sharing derived outputs between projects.</p>
+
+<h3>R2. LENNON variations: ticket type, day of week and period</h3>
+<p>LENNON is the industry ticketing and revenue system behind the ODM. It records sales by flow and product, which ORR converts to journeys with ticket-type journey factors (for example 480 journeys per annual season ticket). Extracts by flow would add:</p>
+<ul>
+<li><b>Ticket-type segmentation.</b> Separate matrices for season, full and reduced-price tickets, each with its own deterrence functions and weekday factor. Commuting and leisure trips have very different trip-length distributions, and several projects need the split: fares work by product, and incident impact by commuter or leisure share.</li>
+<li><b>Day-of-week factors.</b> Where an extract carries the date of travel or validity (day tickets, Advance tickets), day-of-week profiles replace the assumed Saturday and Sunday indices in <code>config.py</code>, by region or flow type.</li>
+<li><b>Periods of the year.</b> Four-weekly figures give seasonal factors, so a "typical weekday in period 8" can be modelled for incident or performance work.</li>
+</ul>
+<p>LENNON records sales, not the time a journey was made, so time-of-day profiles need other sources: gate-line data, passenger counts, Advance-ticket reservations or NTS time-of-day distributions. <b>Implementation:</b> a <code>segment</code> dimension in the trip ends and matrices (<code>matrices.npz</code> keys such as <code>TB_awd_season</code>), with the interface defaulting to the all-segment total so existing users are unaffected.</p>
+
+<h3>R3. Timetable-based generalised cost</h3>
+<p>The single most important method change. Network Rail's open SCHEDULE feed provides every planned passenger and freight schedule (JSON or CIF; full extracts plus daily updates), with calling points by TIPLOC, times and days of operation. From it:</p>
+<ol>
+<li>Build a service network for a representative weekday (permanent schedules with overlays and cancellations applied).</li>
+<li>Compute, for each station pair and period, the in-vehicle time, the service interval (headway), the number of interchanges and the interchange wait, using a time-dependent shortest path or frequency-based skims.</li>
+<li>Combine them into generalised journey time (GJT): in-vehicle time + a service interval penalty + an interchange penalty, following standard rail demand practice (PDFH). Fares from the RSP fares feed or PMS can be added as a money term for segments where price matters.</li>
+<li>Replace network km with GJT in the deterrence functions and recalibrate. Distance stays available as a second cost for validation.</li>
+</ol>
+<p>Fast, frequent direct services to London termini then appear as short generalised costs, which is what concentrates demand on them. This addresses the hold-out under-prediction at source and also routes passengers via the stations their trains actually call at (Frome, for example). <b>Dependencies:</b> TIPLOC-to-network mapping (R6, or the YA_Tiploc_List coordinates as an interim).</p>
+
+<h3>R4. Schedule-based assignment, time periods and crowding</h3>
+<p>The RailWatch model assigned demand to individual trains (Section 2.3 of the paper), with a cost combining fare, time, a crowding term that rises as passengers approach capacity, and wait time. Rebuilding this on R3's service network gives:</p>
+<ul>
+<li>Passengers on each train and train segment, by time period, so the passengers affected by a cancelled or delayed train can be read directly. This is the measure the SWR recovery recommender and passenger-weighted performance analysis need.</li>
+<li>Time-period matrices (AM, inter-peak, PM, off-peak) from departure-time profiles (R2 sources) and, for direction, production–attraction to origin–destination conversion for commuting segments.</li>
+<li>Crowding and capacity, once train formations are attached to schedules.</li>
+</ul>
+<p>A frequency-based or schedule-based transit assignment with capacity restraint is the standard method. Start with an uncapacitated assignment to the fastest services, which is much simpler and already gives train loads.</p>
+
+<h3>R5. Freight services</h3>
+<p>Freight shares infrastructure with passenger services and contributes to infrastructure wear and to reactionary delay, but it is absent from the model. The SCHEDULE feed publishes freight schedules in a separate FREIGHT file (JSON). From it:</p>
+<ul>
+<li>Load freight paths onto the network to give freight trains per section per weekday, by commodity sector where the operator and train characteristics allow.</li>
+<li>Compare with TRUST movement data for trains that actually ran, since many freight paths are conditional and run only when required.</li>
+<li>Control to ORR freight statistics (Table 1330 freight trains run, Table 1333 freight train km by operator).</li>
+</ul>
+<p>Freight trains per section become a second exposure measure next to passengers, for incident models and performance prediction. Passenger-train counts per section come from the same pass and are useful in their own right.</p>
+
+<h3>R6. Network Rail network model</h3>
+<p>The OSM export needed [[km_gap]] km of gap links and [[km_bridge]] km of bridges. Network Rail's track, reference line and organisational boundary data is published on GitHub (openraildata/network-rail-gis) under the Open Government Licence and updated quarterly. Moving to it would:</p>
+<ul>
+<li>remove the synthetic links and give correct junction topology;</li>
+<li>attach Engineer's Line References (ELRs) and mileages to edges, which is how Network Rail and TRUST locate assets and incidents;</li>
+<li>provide Network Rail route and region boundaries, so flows can be summarised by the routes used in performance reporting (T3 and cancellations are reported by route).</li>
+</ul>
+<p>Keep OSM as a fallback and for station platforms and names. Add TIPLOC and STANOX locations as network nodes so schedules (R3, R5) and TRUST delay records can be joined to edges.</p>
+
+<h3>R7. Station groups and cross-London travel</h3>
+<p>Tickets sold to station groups such as London Terminals are split between stations by ORR using routing models, and journeys wholly within the Travelcard area are allocated with Oyster data. railflow inherits those allocations through Table 1410 but routes cross-London journeys over 305 coarse transfer links. Explicit Underground and Elizabeth line interchange links with walk and wait times, and use of the ODM's group-level flows, would improve flows on the London approaches and the London Overground.</p>
+
+<h3>R8. Distribution refinements</h3>
+<ul>
+<li><b>Functional form.</b> Test piecewise (non-parametric) deterrence functions as in the RailWatch model once targets are at station level (R1); keep the log-normal as the default if it validates as well.</li>
+<li><b>Time-period weights.</b> Introduce the paper's origin and destination weights W<sub>i</sub>, W<sub>j</sub> from NTEM 8 time-period factors to build AM, inter-peak and PM matrices.</li>
+<li><b>Segmentation</b> by ticket type (R2), with separate calibration.</li>
+<li><b>Service-quality terms.</b> If GJT (R3) is not yet available, a station attractiveness term from direct services to major destinations can be tested, calibrated on the ODM.</li>
+</ul>
+
+<h3>R9. Trip-end model for scenarios</h3>
+<p>Observed trip ends describe the base year only. For "what if" work (new stations, timetable changes, demand recovery), add a trip-end model in the RailWatch style: NTEM 8 growth by area and scenario, population and employment within station catchments, and elasticities to GJT and fares from PDFH. Base-year trip ends stay observed; the model only produces changes.</p>
+
+<h3>R10. Validation and uncertainty</h3>
+<ul>
+<li>Compare link loads with passenger counts on a sample of corridors (operator load counts or gate-line data, where projects can obtain them). This is the main gap in validation today.</li>
+<li>Score each release on a fixed validation set: ODM hold-out, LA pairs, regional passenger-km and screenlines, so changes are visible in the change log.</li>
+<li>Estimate uncertainty by re-running with perturbed weekday factors and bootstrapped calibration targets, and publish ranges for screenline flows.</li>
+</ul>
+
+<h3>R11. Engineering</h3>
+<ul>
+<li>Tests: version 0.1.0 has core checks in <code>tests/test_core.py</code> (Furness margins, shortest-path assignment and passenger-km conservation). Add tests for the fusion and an end-to-end run on a small synthetic network.</li>
+<li>Continuous integration that runs tests and checks a stored run reproduces published numbers.</li>
+<li>Data manifest with source URLs and SHA-256 checksums for every input (<code>data/README.md</code>), and model outputs attached to GitHub releases so projects can pin a version without re-running.</li>
+<li>Keep <code>railflow.api</code> backwards compatible within a major version.</li>
+</ul>
+
+<h3>Suggested sequence</h3>
+<ol>
+<li><b>Release 0.2:</b> R11 basics and R1 (ODM fusion). Largest accuracy gain for the effort, and it does not change the interface.</li>
+<li><b>Release 0.3:</b> R2 segmentation and day-of-week factors.</li>
+<li><b>Release 0.4:</b> R6 network, then R3 generalised cost and recalibration.</li>
+<li><b>Release 0.5 onwards:</b> R4 train-level assignment and time periods, and R5 freight. R7–R10 alongside.</li>
+</ol>
+
+<h2 id="changelog">Change log</h2>
+<div class="tbl"><table>
+<thead><tr><th>Version</th><th>Date</th><th>Change</th></tr></thead>
+<tbody>
+<tr><td>0.1.0</td><td>October 2026</td><td>First release as an independent model, separated from the SWR Service Recovery POC. Package <code>railflow</code> with CLI and read-only interface; calibration and fusion statistics written to <code>calibration.json</code>; metadata recorded after each step; outputs identical to the POC run. Examples for three projects; core tests.</td></tr>
+</tbody></table></div>
+
+<h2 id="sources">Sources</h2>
+<p>The same list is published as a separate page: <a href="sources.html">sources.html</a>.</p>
+[[sources_section]]
+</main>
+</body>
+</html>

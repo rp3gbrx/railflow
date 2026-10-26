@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>railflow Applications</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+[[style]]
+</style>
+</head>
+<body>
+<main>
+<p class="eyebrow">railflow · Applications</p>
+<h1>Using railflow in other projects: worked examples</h1>
+<p class="meta">Prepared by Dr Rawle Prince · [[date]] · railflow [[version]], base year ORR [[base_year]] · Model description: <a href="technical_document.html">technical_document.html</a> · Code: <code>examples/</code></p>
+<p class="lede">Three current AIIA projects work with rail flows but have no measure of how many passengers each flow, station or route carries. This page shows, with runnable examples on the current model, what railflow adds to each of them: the Split Ticket Calculator, the Flow Classification model and the T3 &amp; Cancellation prediction work. The SWR Service Recovery project, the model's first user, has its own report.</p>
+
+<div class="key">
+<h3>Summary</h3>
+<ul>
+<li><b>Split Ticket Calculator:</b> demand turns savings into revenue at risk. Weymouth–Melksham saves £121.70 per journey and carries about [[wey_mkm]] journeys a year (upper bound £[[wey_mkm_rev]]k). Aldermaston–Betchworth carries almost none. Didcot Parkway and Swindon have far more journeys passing through than Pewsey, the STC's top split point.</li>
+<li><b>Flow Classification:</b> railflow fills missing mileages with network distance for every flow and adds modelled journeys. Weighting by journeys changes the picture: one cluster holds [[c0_flows]] of flows but [[c0_journeys]] of journeys.</li>
+<li><b>T3 &amp; Cancellation:</b> passenger-km weights by region and line for passenger-weighted performance targets and model training. London carries [[lon_pkm]] of passenger-km on [[lon_track]] of track; Scotland [[sco_pkm]] on [[sco_track]].</li>
+</ul>
+</div>
+
+<nav class="toc" aria-label="Contents"><ol>
+<li><a href="#how">How projects use railflow</a></li><li><a href="#split">Split Ticket Calculator</a></li><li><a href="#flows">Flow Classification</a></li>
+<li><a href="#performance">T3 &amp; Cancellation prediction</a></li><li><a href="#swr">SWR Service Recovery</a></li><li><a href="#next">Next steps by project</a></li>
+<li><a href="#sources">Sources</a></li>
+</ol></nav>
+
+<h2 id="how">How projects use railflow</h2>
+<p>A project reads a model run through the read-only interface and keeps its own code and data in its own repository:</p>
+<div class="eq">from railflow.api import RailFlow
+rf = RailFlow("path/to/railflow/outputs")
+T = rf.matrix("B", "ann")                 # station x station journeys a year (Model B)
+rf.passing_through("PEW")                 # OD pairs routed via Pewsey, with weekday trips
+rf.route_stations("WEY", "MKM")           # stations on the modelled route
+rf.screenline("VXH", "WAT")               # corridor flow between two stations
+print(rf.metadata["version"])             # record next to project results</div>
+<p>Each example below is a single script in <code>examples/</code> that runs in under a minute on a completed model run and writes CSV files and a figure to its own <code>outputs/</code> folder. Station pairs are keyed by CRS code; NLC codes are in <code>rf.stations.nlc</code> for joining to PMS or LENNON extracts.</p>
+<div class="note"><p><b>How much to trust the numbers.</b> Station-pair journeys are Model B estimates. For the 2,540 flows ORR publishes and for local-authority totals they match the data; for small and unpublished flows they are gravity-model infill and should be read as an order of magnitude. Route-level and regional totals are more reliable than any single small flow. See the validation section of the technical document.</p></div>
+
+<h2 id="split">Split Ticket Calculator</h2>
+<h3>The project</h3>
+<p>The Split Ticket Calculator (STC) finds split-ticketing opportunities (STOs) in a price structure: for each origin–destination flow in the PMS data, it resolves the route with the network graph and Darwin services, tests feasible split stations where trains call, and reports the cheapest combination of tickets. It is being used for GWR fares work on Anytime Day Singles and Advance Singles. Its outputs rank opportunities by saving per journey. They do not say how many people travel on each flow, so a large saving on a flow nobody uses ranks the same as one on a busy flow.</p>
+<h3>What railflow adds</h3>
+<ol>
+<li><b>Demand on every flow.</b> Annual journeys × saving gives an upper bound on revenue at risk if every traveller split their ticket. That ranks STOs by what they could cost, not by saving alone. <code>--stc summary_results.csv</code> joins the STC's primary output by origin and destination and writes the ranked list.</li>
+<li><b>Journeys passing through each split station.</b> Every OD pair whose modelled route passes a station, with weekday and annual journeys. A station that is both a common split point and carries many through journeys is where split ticketing can cost most.</li>
+<li><b>A route check.</b> The modelled route and its stations can be compared with the STC's route.</li>
+</ol>
+<h3>Results</h3>
+[[stc_examples_table]]
+<p>The STC's two worked examples are very different once demand is attached. Weymouth–Melksham has a large saving and a modest but real flow, so it could be worth tens of thousands of pounds a year if every traveller split. Aldermaston–Betchworth has a small saving and almost no demand. The modelled Weymouth–Melksham route is [[wey_mkm_km]] km, against 109.9 km from the STC's segment mileages (14.54 + 53.72 miles), and it passes Maiden Newton, the STC's split point.</p>
+<figure><img src="figures/split_station_through_journeys.png" alt="Bar chart of journeys passing through and using each candidate split station"><figcaption>Candidate split stations on GWR routes in the STC analysis: journeys a year whose modelled route passes the station (blue) and the station's own entries and exits (orange). Frome shows no through journeys because the shortest track path bypasses the Frome loop; in the timetable many trains call there.</figcaption></figure>
+[[split_station_table]]
+<p>Pewsey, the STC's top split point by both count and average saving, has [[pew_through]] million journeys a year passing through it but only [[pew_ee]] thousand entries and exits. Didcot Parkway and Swindon carry several times as many through journeys, so even a lower split rate there could cost more. Combined with the STC's split counts, this gives a demand-weighted priority list for fares review.</p>
+<h3>Caveats</h3>
+<ul>
+<li>The upper bound assumes every traveller on the flow splits. Real take-up depends on retailer behaviour and awareness; the ranking is more useful than the absolute values.</li>
+<li>Model B gives all-ticket demand. The STC work is about Anytime Day Singles and Advance Singles, so a product split (roadmap R2, LENNON by ticket type) would sharpen the estimate.</li>
+<li>railflow routes on the shortest track path; the STC uses calling patterns. The two can disagree on loops and where several routes compete (Frome is the example here). Timetable-based routing (R3) removes the difference.</li>
+</ul>
+
+<h2 id="flows">Flow Classification</h2>
+<h3>The project</h3>
+<p>The preliminary Flow Classification model, part of the Integrated Fares Model work, grouped 15,072 PMS flows for London Overground and Greater Anglia into five clusters with k-means, using ticket types, mileage and station usage. Its stated limitations include missing or inconsistent mileages and no measure of journeys on each flow, with LENNON data planned.</p>
+<h3>What railflow adds</h3>
+<ul>
+<li><code>network_km</code>: route distance on the rail network for every station pair, which fills missing mileages consistently.</li>
+<li><code>crowfly_km</code>: straight-line distance, so circuitous flows can be identified.</li>
+<li><code>annual_journeys</code> and <code>weekday_journeys</code>: modelled demand on the flow, in both directions.</li>
+<li><code>commute_share</code>: season-ticket share of the two stations, weighted by their usage (a proxy until LENNON gives it by flow).</li>
+</ul>
+<h3>Results</h3>
+<p>The example builds these features for all [[n_flows]] station pairs touching a Greater Anglia or London Overground station with at least 100 modelled journeys a year ([[flows_journeys]] million journeys), runs a five-cluster k-means with distance weighted up as in the preliminary model, and reports each cluster's share of flows and of journeys.</p>
+<figure><img src="figures/clusters_distance_vs_journeys.png" alt="Five scatter panels of crow-fly distance against modelled journeys, one cluster highlighted in each"><figcaption>Each panel highlights one cluster (blue) against all flows (grey): crow-fly distance against modelled journeys a year, both on log scales.</figcaption></figure>
+[[cluster_table]]
+<p>Clusters of similar size in flow counts are very different in demand. One cluster contains [[c0_flows]] of flows but [[c0_journeys]] of journeys; the two long-distance clusters together hold [[long_flows]] of flows and [[long_journeys]] of journeys. For fares decisions, where revenue and customer impact scale with journeys, cluster summaries should be weighted by journeys and the clustering itself can use journeys as a sample weight.</p>
+<h3>How to use it</h3>
+<ul>
+<li>Join <code>flow_features_ga_lo.csv.gz</code> to the PMS flow list on origin and destination CRS (or NLC via <code>rf.stations</code>). The PMS list has fewer flows because it holds priced flows only, while the example covers all station pairs with modelled demand.</li>
+<li>Use <code>network_km</code> where PMS mileage is missing, and the difference between the two as a data-quality flag.</li>
+<li>When LENNON is added, replace modelled journeys with observed ones and keep the network distance. The weekday ratio in the example is close to 1 for every cluster, because the current model derives it from station-level ticket mix; LENNON by flow and product (R2) would make it informative.</li>
+</ul>
+
+<h2 id="performance">T3 &amp; Cancellation prediction</h2>
+<h3>The project</h3>
+<p>The T3 &amp; Cancellation work tests whether indicator data (track quality, speed restrictions, vegetation, fleet reliability, signaller vacancies, right-time depot starts) predicts T3 (trains arriving within three minutes of schedule) and cancellations, using XGBoost on route-period metrics and SARIMAX for national forecasts. T3 and cancellations count trains. Passengers feel them in proportion to how many people are on the affected trains, which varies by an order of magnitude between routes. The project's PfPI definition (delay minutes that count against the passenger performance target) already points this way.</p>
+<h3>What railflow adds</h3>
+<ul>
+<li><b>Passenger-weighted targets:</b> aggregate route-period T3 and cancellation rates to a national figure weighted by passenger-km, alongside the train-weighted one.</li>
+<li><b>Sample weights or features:</b> passenger exposure per route as an XGBoost sample weight, so errors on busy routes count for more, or as a feature.</li>
+<li><b>Impact conversion:</b> predicted cancellations × passengers per train on the route gives passengers affected for prioritisation.</li>
+</ul>
+<h3>Results</h3>
+<figure><img src="figures/pkm_vs_track_by_region.png" alt="Bar chart comparing shares of passenger-km and track-km by region"><figcaption>Share of GB passenger-km (blue) and of track-km (orange) by region. Each track section is assigned to the region of its nearest station.</figcaption></figure>
+[[region_table]]
+<p>London carries [[lon_pkm]] of passenger-km on [[lon_track]] of track, and the South East and East of England are also heavy. Scotland, Wales and Yorkshire carry much less than their share of track. A train-weighted national T3 therefore gives a different answer from a passenger-weighted one whenever performance differs between these areas.</p>
+[[lines_table]]
+<p>Weighting a route-period table takes two lines:</p>
+<div class="eq">w = pd.read_csv("examples/performance_weighting/outputs/weights_by_region.csv").set_index("region").pkm_share
+df["w"] = df.area.map(w);  national = (df.t3 * df.w).groupby(df.period).sum() / df.w.groupby(df.period).sum()</div>
+<h3>Caveats</h3>
+<ul>
+<li>The project reports by Network Rail route, while the example uses ORR regions as a stand-in. Network Rail route boundaries are part of roadmap item R6; with them the same script gives weights by route directly.</li>
+<li>Weights are annual all-day passenger-km. Period (four-weekly) and peak weights need LENNON period data and time-of-day profiles (R2, R4).</li>
+<li>Passengers per train, needed to convert cancellations to passengers affected, comes with train-level assignment (R4). Until then, passenger-km divided by train-km from the SCHEDULE feed (R5 produces train counts) is a reasonable interim.</li>
+</ul>
+
+<h2 id="swr">SWR Service Recovery</h2>
+<p>The SWR Service Recovery proof of concept was the model's first application and is maintained in its own repository (<code>swr-service-recovery-flows</code>). It uses railflow for station throughput and screenline flows as the passenger exposure in incident models, to build a passenger-based location prior for the incident generator, to estimate passengers affected by incidents and recovery actions, and to weigh the cost of skipping stations in fail-to-stop decisions. Its report, <i>Network flows in the SWR Service Recovery POC</i>, describes the results.</p>
+
+<h2 id="next">Next steps by project</h2>
+<div class="tbl"><table>
+<thead><tr><th>Project</th><th>Immediate use</th><th>Improves with roadmap item</th></tr></thead>
+<tbody>
+<tr><td>Split Ticket Calculator</td><td>Run the example with <code>--stc summary_results.csv</code> on the GWR results; review the top of the revenue-at-risk ranking</td><td>R2 (demand by product), R3 (routing by calling pattern), R1 (observed flows)</td></tr>
+<tr><td>Flow Classification</td><td>Join network distance and modelled journeys to the PMS flows; report clusters by journeys</td><td>R1 and R2 (observed journeys by product and flow)</td></tr>
+<tr><td>T3 &amp; Cancellation</td><td>Passenger-weighted national metrics; passenger-km sample weights</td><td>R6 (Network Rail routes), R4 and R5 (passengers and trains per route)</td></tr>
+<tr><td>SWR Service Recovery</td><td>Location prior, exposure and skip-cost tables (in use)</td><td>R4 (passengers per train by time period), R5 (freight exposure)</td></tr>
+</tbody></table></div>
+
+<h2 id="sources">Sources</h2>
+<p>The full list for railflow, including the project pages these examples draw on, is in <a href="sources.html">sources.html</a> and in the technical document.</p>
+</main>
+</body>
+</html>

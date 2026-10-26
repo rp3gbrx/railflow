@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>railflow Sources</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: single reading column (~70ch); figures at column width; wide tables scroll in their own box. */
+:root {
+  --bg: #f6f7f8; --panel: #ffffff; --ink: #14181d; --ink-2: #4c5560; --ink-3: #7b848e;
+  --rule: #dfe3e7; --accent: #0f6e8c; --hi: #c53434; --code: #eef1f3;
+  --display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1317; --panel: #161b21; --ink: #eef1f4; --ink-2: #b4bcc5; --ink-3: #87909a;
+    --rule: #2a323b; --accent: #4fb3d1; --hi: #e66767; --code: #1d242b; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1317; --panel: #161b21; --ink: #eef1f4; --ink-2: #b4bcc5; --ink-3: #87909a;
+  --rule: #2a323b; --accent: #4fb3d1; --hi: #e66767; --code: #1d242b; color-scheme: dark; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body);
+  padding-block: max(28px, env(safe-area-inset-top, 0px)) 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 6px; }
+img { max-width: 100%; height: auto; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.eyebrow { font: 600 12px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0; }
+h1 { font: 700 40px/1.02 var(--display); margin: 4px 0 6px; text-wrap: balance; }
+h2 { font: 700 26px/1.1 var(--display); margin: 34px 0 4px; padding-top: 14px; border-top: 1px solid var(--rule); text-wrap: balance; }
+h3 { font: 600 19px/1.2 var(--display); letter-spacing: .02em; margin: 20px 0 2px; color: var(--ink); }
+p, li { max-width: 70ch; }
+p { margin: 8px 0; }
+ul, ol { margin: 6px 0; padding-left: 22px; }
+li { margin: 4px 0; }
+.meta { color: var(--ink-3); font-size: 14px; }
+.url { font-size: 12.5px; color: var(--ink-3); word-break: break-all; }
+.use { font-size: 13.5px; color: var(--ink-2); }
+.lede { font-size: 18px; color: var(--ink-2); }
+.key { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px; margin: 14px 0; }
+.key h3 { margin-top: 0; }
+figure { margin: 16px 0; }
+figure img { border: 1px solid var(--rule); border-radius: 4px; background: #fcfcfb; }
+figcaption { font-size: 13.5px; color: var(--ink-2); margin-top: 6px; }
+.tbl { overflow-x: auto; margin: 10px 0; }
+table { border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; min-width: 100%; }
+th { text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3); border-bottom: 1px solid var(--rule); padding: 6px 8px; white-space: nowrap; }
+td { border-bottom: 1px solid var(--rule); padding: 6px 8px; vertical-align: top; }
+td.n, th.n { text-align: right; white-space: nowrap; }
+code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 13.5px; background: var(--code); padding: 1px 4px; border-radius: 3px; }
+.eq { background: var(--code); border-radius: 6px; padding: 10px 14px; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 14px; overflow-x: auto; white-space: pre; }
+.flag { color: var(--hi); font-weight: 600; }
+nav.toc { font-size: 14.5px; }
+nav.toc ol { columns: 2; column-gap: 28px; }
+@media (max-width: 560px) { nav.toc ol { columns: 1; } h1 { font-size: 32px; } }
+.note { background: var(--panel); border-left: 3px solid var(--accent); border-radius: 4px; padding: 10px 14px; margin: 12px 0; }
+.pill { display: inline-block; padding: 0 7px; border-radius: 9px; font-size: 12px; font-weight: 600; border: 1px solid var(--rule); color: var(--ink-2); white-space: nowrap; }
+
+</style>
+</head>
+<body>
+<main>
+<p class="eyebrow">railflow · Sources</p>
+<h1>railflow sources</h1>
+<p class="meta">Every source used to build, document and apply the model. Generated from <code>docs/sources.py</code> on 25 October 2026.</p>
+<p>Documents supplied with the project have no public link and are shown in italics. All other entries link to the source.</p>
+<h3>Method references (supplied with the project)</h3>
+<ol start="1">
+<li><i>Real-time estimation of train occupancies using mobile phone data (RailWatch)</i>. Prince, R. and Perret, P., Citi Logik Ltd. European Transport Conference 2018, AET.<br><span class="use">Used for: Train Occupancy Model: trip-end model, gravity distribution with multiple region-level deterrence functions (Section 2.2, Table 1), schedule-based assignment (Section 2.3).</span></li>
+<li><i>Estimating Parameters of Deterrence Functions in Synthetic Matrix Development (technical note)</i>. Prince, R., AECOM. Technical note (PDF dated March 2022).<br><span class="use">Used for: Calibration as non-linear least squares (Levenberg–Marquardt) of deterrence parameters against trip-length distributions.</span></li>
+<li><i>Calibrate_Synthetic_ParmsNew.R (version 1.4, multiple deterrence functions)</i>. Prince, R.. R script, 2017.<br><span class="use">Used for: Log-normal deterrence form (dlnorm) and multi-segment calibration logic.</span></li>
+</ol>
+<h3>Office of Rail and Road (ORR)</h3>
+<ol start="4">
+<li><a href="https://dataportal.orr.gov.uk/media/msigcn24/station-usage-2024-25-statistical-release.pdf">Table 1410: Passenger entries, exits and interchanges by station, April 2024 – March 2025</a>. ORR. Estimates of station usage 2024-25 (statistical release).<br><span class="url">https://dataportal.orr.gov.uk/media/msigcn24/station-usage-2024-25-statistical-release.pdf</span><br><span class="use">Used for: Station trip ends by ticket type; main origin/destination flow per station; station region and facility owner.</span></li>
+<li><a href="https://dataportal.orr.gov.uk/statistics/usage/regional-rail-usage/table-1595-passenger-journeys-between-local-authorities/">Table 1595: Passenger journeys between local authorities</a>. ORR. Regional rail usage, April 2024 – March 2025.<br><span class="url">https://dataportal.orr.gov.uk/statistics/usage/regional-rail-usage/table-1595-passenger-journeys-between-local-authorities/</span><br><span class="use">Used for: Observed trip-length distributions by region (calibration targets); LA-pair totals for Model B; validation.</span></li>
+<li><a href="https://dataportal.orr.gov.uk/statistics/usage/regional-rail-usage/table-1520-regional-passenger-journeys-between-and-within-regions/">Table 1520: Regional passenger journeys between and within regions</a>. ORR. Regional rail usage, April 2024 – March 2025.<br><span class="url">https://dataportal.orr.gov.uk/statistics/usage/regional-rail-usage/table-1520-regional-passenger-journeys-between-and-within-regions/</span><br><span class="use">Used for: Cross-check of regional totals.</span></li>
+<li><a href="https://dataportal.orr.gov.uk/statistics/usage/regional-rail-usage">Regional rail usage (data portal page)</a>. ORR. Statistics, 2024-25.<br><span class="url">https://dataportal.orr.gov.uk/statistics/usage/regional-rail-usage</span><br><span class="use">Used for: Within- and between-region journey totals (1,084m and 448m).</span></li>
+<li><a href="https://dataportal.orr.gov.uk/media/zzlpyvq4/passenger-rail-usage-jan-mar-2025.pdf">Passenger rail usage, January to March 2025 (statistical release)</a>. ORR. PDF.<br><span class="url">https://dataportal.orr.gov.uk/media/zzlpyvq4/passenger-rail-usage-jan-mar-2025.pdf</span><br><span class="use">Used for: GB 2024-25 totals: 1,729m journeys and 64.6bn passenger-km (validation).</span></li>
+<li><a href="https://dataportal.orr.gov.uk/media/1917/station-usage-quality-and-methodology-report.pdf">Estimates of station usage: quality and methodology report</a>. ORR. PDF.<br><span class="url">https://dataportal.orr.gov.uk/media/1917/station-usage-quality-and-methodology-report.pdf</span><br><span class="use">Used for: How LENNON sales become journeys (season-ticket journey factors), the Origin-Destination Matrix (ODM), station groups, Travelcard and PTE infill; ODM availability on the Rail Data Marketplace.</span></li>
+<li><a href="https://dataportal.orr.gov.uk/statistics/usage/freight-rail-usage-and-performance">Freight rail usage and performance (data portal page)</a>. ORR. Statistics, latest release April–June 2026.<br><span class="url">https://dataportal.orr.gov.uk/statistics/usage/freight-rail-usage-and-performance</span><br><span class="use">Used for: Freight control totals for the roadmap (Table 1330 freight trains run, Table 1333 freight train km by operator).</span></li>
+</ol>
+<h3>Network and reference data</h3>
+<ol start="11">
+<li><a href="https://github.com/osgeonepal/oex">hotosm_gbr_railways_osm_shp (railways, OSM snapshot 2026-10-09)</a>. Humanitarian OpenStreetMap Team export of OpenStreetMap; oex 0.4.16. ESRI Shapefile; Open Database Licence (ODbL).<br><span class="url">https://github.com/osgeonepal/oex</span><br><span class="use">Used for: Rail network for distances, assignment and maps; admin areas for station-to-LA mapping.</span></li>
+<li><a href="https://github.com/davwheat/uk-railway-stations">uk-railway-stations (stations.json)</a>. davwheat. GitHub.<br><span class="url">https://github.com/davwheat/uk-railway-stations</span><br><span class="use">Used for: Station coordinates by CRS code.</span></li>
+<li><a href="https://github.com/ellcom/UK-Train-Station-Locations">UK-Train-Station-Locations</a>. ellcom. GitHub.<br><span class="url">https://github.com/ellcom/UK-Train-Station-Locations</span><br><span class="use">Used for: Second set of station coordinates (cross-check and fallback).</span></li>
+<li><a href="https://github.com/openraildata/network-rail-gis">network-rail-gis: track, reference line and organisational boundaries</a>. Open Rail Data (Network Rail data, Open Government Licence). GitHub; listed on DfT Find Transport Data.<br><span class="url">https://github.com/openraildata/network-rail-gis</span><br><span class="use">Used for: Roadmap: replacement network with Engineer&#x27;s Line References and Network Rail route boundaries.</span></li>
+<li><a href="https://findtransportdata.dft.gov.uk/dataset/track,-reference-line-and-organisational-boundaries-182fe21f794">Track, reference line and organisational boundaries (dataset record)</a>. DfT Find Transport Data. Web page.<br><span class="url">https://findtransportdata.dft.gov.uk/dataset/track,-reference-line-and-organisational-boundaries-182fe21f794</span><br><span class="use">Used for: Licence (OGL) and quarterly update frequency of the Network Rail GIS data.</span></li>
+<li><a href="https://wiki.openraildata.com/index.php/SCHEDULE">SCHEDULE feed</a>. Open Rail Data wiki (Network Rail open data feeds). Web page.<br><span class="url">https://wiki.openraildata.com/index.php/SCHEDULE</span><br><span class="use">Used for: Roadmap: timetable (CIF/JSON) for generalised costs and schedule-based assignment; separate FREIGHT schedule file (JSON).</span></li>
+<li><a href="https://wiki.openraildata.com/index.php/About_the_feeds">About the Network Rail feeds</a>. Open Rail Data wiki. Web page.<br><span class="url">https://wiki.openraildata.com/index.php/About_the_feeds</span><br><span class="use">Used for: Roadmap: TRUST train movements and other feeds.</span></li>
+<li><a href="https://wiki.openraildata.com/index.php/Reference_Data">Reference Data</a>. Open Rail Data wiki. Web page.<br><span class="url">https://wiki.openraildata.com/index.php/Reference_Data</span><br><span class="use">Used for: Meaning of TIPLOC, STANOX, CRS and NLC location codes.</span></li>
+<li><a href="https://github.com/Jnction/YA_Tiploc_List">YA_Tiploc_List (tiplocs-merged-stanox.csv)</a>. Jnction. GitHub; merges NaPTAN, CORPUS, BPLAN and other sources.<br><span class="url">https://github.com/Jnction/YA_Tiploc_List</span><br><span class="use">Used for: Roadmap: locating TIPLOCs on the network to link timetables and TRUST data.</span></li>
+<li><a href="https://coe.transportforthesoutheast.org.uk/data-item/rail-origin-destination-matrix-2022-23">Rail Origin Destination Matrix 2022-23 (TfSE Centre of Excellence data item)</a>. Transport for the South East. Web page; data sourced from the Rail Data Marketplace.<br><span class="url">https://coe.transportforthesoutheast.org.uk/data-item/rail-origin-destination-matrix-2022-23</span><br><span class="use">Used for: Evidence that station-to-station ODM extracts are obtainable for project use (roadmap item R1).</span></li>
+<li><a href="https://ckan.publishing.service.gov.uk/dataset/national-trip-end-model-ntem/resource/1a019027-77fe-497c-8a38-3ef1ef231393">National Trip End Model (NTEM) version 8.0</a>. Department for Transport. data.gov.uk dataset (core, high and low scenarios).<br><span class="url">https://ckan.publishing.service.gov.uk/dataset/national-trip-end-model-ntem/resource/1a019027-77fe-497c-8a38-3ef1ef231393</span><br><span class="use">Used for: Roadmap: time-period origin/destination factors and growth for scenarios, as used in the RailWatch trip-end model.</span></li>
+</ol>
+<h3>Evidence for the average-weekday factors</h3>
+<ol start="22">
+<li><a href="https://www.transport.gov.scot/publication/public-transport-system-analysis-supporting-paper-one-fair-fares-review/public-use-of-transport-trends-and-patterns">Public use of transport – trends and patterns (Fair Fares Review, supporting paper one)</a>. Transport Scotland. Web publication.<br><span class="url">https://www.transport.gov.scot/publication/public-transport-system-analysis-supporting-paper-one-fair-fares-review/public-use-of-transport-trends-and-patterns</span><br><span class="use">Used for: Weekday rail at about 80% of pre-pandemic levels, with weekends recovering more strongly.</span></li>
+<li><a href="https://content.tfl.gov.uk/travel-in-london-2024-trends-in-public-transport-demand-and-operational-performance-acc.pdf">Travel in London 2024: trends in public transport demand and operational performance</a>. Transport for London. PDF.<br><span class="url">https://content.tfl.gov.uk/travel-in-london-2024-trends-in-public-transport-demand-and-operational-performance-acc.pdf</span><br><span class="use">Used for: Day-of-week recovery pattern (Saturday and Sunday above weekdays).</span></li>
+</ol>
+<h3>Projects using the model (supplied as otherProjects)</h3>
+<ol start="24">
+<li><i>Split Ticket Calculator (Confluence page)</i>. AIIA project team. Confluence export, 2026.<br><span class="use">Used for: STC pipeline, Pewsey as a top split point, Weymouth–Melksham and Aldermaston–Betchworth examples.</span></li>
+<li><i>Flow Classification – Preliminary model (Confluence page)</i>. AIIA project team. Confluence export, 2026.<br><span class="use">Used for: Five-cluster k-means of 15,072 PMS flows for London Overground and Greater Anglia; stated limitations (missing mileages, LENNON to be added).</span></li>
+<li><i>T3 &amp; Cancellation Prediction Analysis (Confluence page)</i>. AIIA project team. Confluence export, 2026.<br><span class="use">Used for: Route-period T3 and cancellation prediction (XGBoost, SARIMAX); PfPI definition.</span></li>
+<li><i>SWR Service Recovery POC (Confluence pages and FTS Success Tracker)</i>. GBRX project team / South Western Railway. Project folder, Oct 2026.<br><span class="use">Used for: First application of the model (see the swr-service-recovery-flows repository).</span></li>
+</ol>
+<h3>Software</h3>
+<ol start="28">
+<li><i>Python: NumPy, pandas, SciPy, GeoPandas, Shapely, pyogrio, pyarrow, Numba, statsmodels, Matplotlib</i>. Open-source projects. Python packages.<br><span class="use">Used for: Modelling, assignment, statistics and figures.</span></li>
+<li><i>pandoc, Beautiful Soup, lxml</i>. Open-source projects. Document tools.<br><span class="use">Used for: Confluence storage format, Word and Markdown versions of the documents.</span></li>
+</ol>
+</main>
+</body>
+</html>

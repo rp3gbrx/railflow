@@ -1,0 +1,11 @@
+# OSM export is large (168 MB); download it as described in data/README.md
+data/osm/
+# model outputs (regenerate with `python -m railflow run`)
+outputs/
+examples/*/outputs/
+# intermediate files from docs/build_docs.py
+docs/_*_pandoc.html
+__pycache__/
+*.pyc
+*.egg-info/
+.ipynb_checkpoints/
