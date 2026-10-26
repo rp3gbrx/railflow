@@ -10,7 +10,7 @@ Documents supplied with the project have no public link and are shown in italics
     <span class="use">Used for: Train Occupancy Model: trip-end model, gravity distribution with multiple region-level deterrence functions (Section 2.2, Table 1), schedule-based assignment (Section 2.3).</span>
 2.  *Estimating Parameters of Deterrence Functions in Synthetic Matrix Development (technical note)*. Prince, R., AECOM. Technical note (Technical note related to: https://aetransport.org/public/downloads/Ss_zA/5533-59d12d0dea196.pdf ).  
     <span class="use">Used for: Calibration as non-linear least squares (Levenberg–Marquardt) of deterrence parameters against trip-length distributions.</span>
-3.  *Calibrate_Synthetic_ParmsNew.R (code related to: Technical note related to: https://aetransport.org/public/downloads/Ss_zA/5533-59d12d0dea196.pdf )*. Prince, R.. R script, 2017.  
+3.  *Calibrate_Synthetic_ParmsNew.R (code related to: https://aetransport.org/public/downloads/Ss_zA/5533-59d12d0dea196.pdf )*. Prince, R.. R script, 2017.  
     <span class="use">Used for: Log-normal deterrence form (dlnorm) and multi-segment calibration logic.</span>
 
 ### Office of Rail and Road (ORR)
